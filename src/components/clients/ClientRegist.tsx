@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ListEnd, Save } from 'lucide-react';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DaumPostcode from 'react-daum-postcode';
 import { comCodeType } from '../../typings/common';
@@ -23,6 +23,7 @@ const ClientRegist = () => {
         bizRegNo: "",
         creditRating: "",
         etcInfo: "",
+        atchFileId: "",
     });
     const managerRef = useRef(null);
     const [ daumModalYn, setDaumModalYn ] = useState(false)
@@ -31,10 +32,12 @@ const ClientRegist = () => {
         position: '',
         extnNmbr: '',
         mblPhone: '',
-        creator: '',
+        regNm: '',
     });
     const [managers, setManagers] = useState<tManager[]>([])
     const [ showManagerModal, setShowManagerModal] = useState(false);
+
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
     const { data: bizType } = useQuery<comCodeType[]>({
         queryKey: ['bizType'],
@@ -59,70 +62,147 @@ const ClientRegist = () => {
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+            
+            if(selectedFiles.length > 0) {
+                const fileForm = new FormData();
+                selectedFiles.forEach(file => {
+                    fileForm.append('file', file); // 서버에서 files[] 형태로 받을 수 있도록
+                });
 
-        
+                const fileUploadRes = await fetch('/pms/api/common/clientFileInfo.do', {
+                    method: 'POST',
+                    body: fileForm,
+                });
 
-        try {
+                const fileUploadResult = await fileUploadRes.text();
 
-            // const fileForm = new FormData();
-            // fileForm.append('file', file)
+                // 불필요한 따옴표 제거
+                const cleanedFileUploadResult = fileUploadResult.replace(/^"|"$/g, '');
 
-            // const atchFileId = await fetch('/pms/api/common/clientFileInfo.do', {
-            //     method: 'POST',
-            //     body: 
-            // })
 
-            const dataToSend = {
-                ...formData,
-                clientAddr: formData.clientAddrMain + formData.clientAddrDetail
-            };
+                console.log(cleanedFileUploadResult)
 
-            const response = await fetch('/crm/client/info', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(dataToSend), // formData를 JSON으로 전송
-            });
-
-            const clientSeq = (await response.text()).split("_")[0];
-
-            if(clientSeq && managers.length > 0) {
-
-                const contactData = managers.map(manager => ({
-                    ...manager,
-                    clientSeq: clientSeq, // 담당자 등록할 때 clientSeq 추가
+                setFormData(prevState => ({
+                    ...prevState,  // 이전 상태 유지
+                    atchFileId: cleanedFileUploadResult,
                 }));
 
+                // atchFileId = fileUploadResult.atchFileId;
 
-                const contactResponse = await fetch('/crm/client/contact/info-by-list', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(contactData),
-                });
+                if (!fileUploadResult) {
+                    throw new Error('파일 업로드 실패: atchFileId 없음');
+                }
+
             }
 
-            Swal.fire({
-                icon: 'success',
-                title: '등록 완료',
-                text: '고객 정보가 성공적으로 등록되었습니다.',
-              }).then(() => {
-                navigate(`/client/detail/${clientSeq}`);
-              });
 
-        } catch(error) {
-            console.error('Error submitting form:', error);
+        // try {
+        //     const response = await fetch('/crm/client/info', {
+        //         method: 'POST',
+        //         headers: {
+        //             'Content-Type': 'application/json',
+        //         },
+        //         body: JSON.stringify(dataToSend), // formData를 JSON으로 전송
+        //     });
 
-            Swal.fire({
-                icon: 'error',
-                title: '오류 발생',
-                text: '데이터 전송 중 오류가 발생했습니다.',
-            });
-        }
+        //     const clientSeq = (await response.text()).split("_")[0];
+
+        //     if(clientSeq && managers.length > 0) {
+
+        //         const contactData = managers.map(manager => ({
+        //             ...manager,
+        //             clientSeq: clientSeq, // 담당자 등록할 때 clientSeq 추가
+        //         }));
+
+
+        //         const contactResponse = await fetch('/crm/client/contact/info-by-list', {
+        //             method: 'POST',
+        //             headers: {
+        //                 'Content-Type': 'application/json',
+        //             },
+        //             body: JSON.stringify(contactData),
+        //         });
+        //     }
+
+        //     Swal.fire({
+        //         icon: 'success',
+        //         title: '등록 완료',
+        //         text: '고객 정보가 성공적으로 등록되었습니다.',
+        //       }).then(() => {
+        //         navigate(`/client/detail/${clientSeq}`);
+        //       });
+
+        // } catch(error) {
+        //     console.error('Error submitting form:', error);
+
+        //     Swal.fire({
+        //         icon: 'error',
+        //         title: '오류 발생',
+        //         text: '데이터 전송 중 오류가 발생했습니다.',
+        //     });
+        // }
     
     }
+
+    useEffect(() => {
+        const submitData = async () => {
+            if (formData.atchFileId) {
+                console.log('atchFileId가 변경되었습니다:', formData.atchFileId);
+    
+                const dataToSend = {
+                    ...formData,
+                    clientAddr: formData.clientAddrMain + formData.clientAddrDetail,
+                };
+    
+                try {
+                    const response = await fetch('/crm/client/info', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(dataToSend), // formData를 JSON으로 전송
+                    });
+    
+                    const clientSeq = (await response.text()).split("_")[0];
+    
+                    if (clientSeq && managers.length > 0) {
+                        const contactData = managers.map(manager => ({
+                            ...manager,
+                            clientSeq: clientSeq, // 담당자 등록할 때 clientSeq 추가
+                        }));
+    
+                        const contactResponse = await fetch('/crm/client/contact/info-by-list', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(contactData),
+                        });
+                    }
+    
+                    Swal.fire({
+                        icon: 'success',
+                        title: '등록 완료',
+                        text: '고객 정보가 성공적으로 등록되었습니다.',
+                    }).then(() => {
+                        navigate(`/client/detail/${clientSeq}`);
+                    });
+    
+                } catch (error) {
+                    console.error('Error submitting form:', error);
+    
+                    Swal.fire({
+                        icon: 'error',
+                        title: '오류 발생',
+                        text: '데이터 전송 중 오류가 발생했습니다.',
+                    });
+                }
+            }
+        };
+    
+        submitData(); // useEffect 내에서 async 함수 호출
+    
+    }, [formData]);
 
     const handleChange = useCallback((e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -142,12 +222,28 @@ const ClientRegist = () => {
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-          console.log(file.name);
+        const files = e.target.files;
+        if (files) {
+            const fileArray = Array.from(files);
+            setSelectedFiles((prev) => [...prev, ...fileArray]);
         }
-      };
+    };
 
+    /**
+     * @function handleFileRemove()
+     * 
+     * @param index 
+     * @description 파일 목록에서 파일을 삭제한다.
+     */
+    const handleFileRemove = (index: number) => {
+        setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    /**
+     * @function addRow()
+     * 
+     * @Description 담당자를 추가한다.
+     */
     const addRow = () => {
         const newRow = newManager;
 
@@ -157,14 +253,22 @@ const ClientRegist = () => {
             position: '',
             extnNmbr: '',
             mblPhone: '',
-            creator: ''
+            regNm: ''
         });
         setShowManagerModal(false);
     }
 
+    /**
+     * @function deleteRow()
+     * @param index 
+     * 
+     * @description 담당자를 삭제한다.
+     */
     const deleteRow = (index: number) => {
         setManagers((prevManagers) => prevManagers.filter((_, i) => i !== index));
     }
+
+    
 
     return (
         <>
@@ -365,17 +469,53 @@ const ClientRegist = () => {
                 <div className="flex items-center justify-start bg-gray-50 px-4 border-b border-r border-gray-300">
                     <label className="font-medium text-lg">첨부파일</label>
                 </div>
-                <div className="p-2 border-b border-r border-gray-300">
-                    <label htmlFor="file-upload" className="w-full h-10 p-2 outline-none border border-gray-300 rounded cursor-pointer flex items-center justify-center bg-blue-500 text-white hover:bg-blue-600 transition">
-                        <span>파일 선택</span>
-                    </label>
-                    <input
-                        type="file"
-                        id="file-upload"
-                        className="hidden"
-                        onChange={handleFileChange}
-                    />
-                </div>
+
+                <div className="p-4 border-b border-r border-gray-300 space-y-3">
+  
+                    {/* 파일 업로드 버튼 */}
+                    <div className="flex items-center space-x-3">
+                        <label
+                            htmlFor="file-upload"
+                            className="inline-block cursor-pointer bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold py-2 px-4 rounded"
+                        >
+                            파일 선택
+                        </label>
+
+                        <div className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm text-gray-500 bg-white">
+                            {selectedFiles.length > 0
+                                ? `${selectedFiles.length}개의 파일 선택됨`
+                                : '파일을 선택하세요'}
+                        </div>
+
+                        <input
+                            id="file-upload"
+                            type="file"
+                            multiple
+                            onChange={handleFileChange}
+                            className="hidden"
+                        />
+                    </div>
+
+                    {/* 파일 목록 표시 */}
+                    {selectedFiles.length > 0 && (
+                        <div className="mt-2 space-y-2">
+                        {selectedFiles.map((file, index) => (
+                            <div
+                            key={index}
+                            className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded hover:bg-gray-200"
+                            >
+                            <span className="truncate text-sm text-gray-800 max-w-[80%]">{file.name}</span>
+                            <button
+                                onClick={() => handleFileRemove(index)}
+                                className="text-sm text-red-600 hover:text-red-800"
+                            >
+                                삭제
+                            </button>
+                            </div>
+                        ))}
+                        </div>
+                    )}
+                    </div>
 
                 <div className="flex items-center justify-start bg-gray-50 px-4 border-b border-r border-gray-300">
                     <label className="font-medium text-lg">신용도 평가</label>
@@ -443,7 +583,7 @@ const ClientRegist = () => {
                                 <td className="border px-2 py-2 text-center">{manager.position}</td>
                                 <td className="border px-2 py-2 text-center">{manager.extnNmbr}</td>
                                 <td className="border px-2 py-2 text-center">{manager.mblPhone}</td>
-                                <td className="border px-2 py-2 text-center">{manager.creator}</td>
+                                <td className="border px-2 py-2 text-center">{manager.regNm}</td>
                                 <td className="border px-2 py-2 text-center">
                                     <button onClick={() => deleteRow(index)} className="bg-red-500 text-white px-2 py-1 rounded-medium">삭제</button>
                                 </td>

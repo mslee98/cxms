@@ -4,8 +4,16 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { tClient, tManager } from '../../typings/client';
 import { comCodeType } from '../../typings/common';
 import { fetchBizCode, fetchClientCategoryList, fetchIndClass } from '../../utils/comApiUtils';
-import { ListEnd, Plus, SquarePen, Trash } from 'lucide-react';
+import { ListEnd, Plus, SquarePen, Trash, Download } from 'lucide-react';
 import Swal from 'sweetalert2';
+
+const fetchClientFileInfo = async (atchFileId: string) => {
+    const res = await fetch(`/pms/api/common/clientFiles/${atchFileId}.do`);
+    if (!res.ok) {
+        throw new Error('데이터 로드 오류');
+    }
+    return res.json();
+}
 
 const fetchClientInfo = async (clientSeq: string) => {
     const res = await fetch(`/crm/client/info/${clientSeq}`);
@@ -36,7 +44,7 @@ const ClientView = () => {
         position: '',
         extnNmbr: '',
         mblPhone: '',
-        creator: '',
+        regNm: '',
     });
     const [managers, setManagers] = useState<tManager[]>([])
 
@@ -52,6 +60,22 @@ const ClientView = () => {
         },
         enabled: !!clientSeq,
     });
+
+    const [clientFiles, setClientFiles] = useState<any[]>([]);
+
+    console.log(clientFiles);
+
+    useEffect(() => {
+        if (clientInfo && clientInfo.atchFileId) {
+            fetchClientFileInfo(clientInfo.atchFileId)
+                .then((files) => {
+                    setClientFiles(files); // 조회된 파일 목록 상태에 저장
+                })
+                .catch((error) => {
+                    console.error("파일 조회 오류:", error);
+                });
+        }
+    }, [clientInfo]); 
 
     const { data: clientContactList, error, isLoading } = useQuery({
         queryKey: ['clientContactList', clientSeq],
@@ -88,6 +112,17 @@ const ClientView = () => {
         staleTime: 5000,
         placeholderData: (previousData) => previousData,
     });
+
+    const handleDownload = (atchFileId: string, fileSn: string) => {
+        const url = `/pms/api/common/download-file.do?atchFileId=${atchFileId}&fileSn=${fileSn}`;
+      
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", ""); // 헤더에서 filename 지정됨
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    };
 
     /**
      * 담당자 삭제
@@ -262,7 +297,7 @@ const ClientView = () => {
             position: '',
             extnNmbr: '',
             mblPhone: '',
-            creator: '',
+            regNm: '',
         });
         setShowManagerModal(false);
 
@@ -423,17 +458,40 @@ const ClientView = () => {
                 <div className="flex items-center justify-start bg-gray-50 px-4 border-b border-r border-gray-300">
                     <label className="font-medium text-lg">첨부파일</label>
                 </div>
-                <div className="p-2 border-b border-r border-gray-300">
-                    <label htmlFor="file-upload" className="w-full h-10 p-2 outline-none border border-gray-300 rounded cursor-pointer flex items-center justify-center bg-blue-500 text-white hover:bg-blue-600 transition">
-                        <span>파일 선택</span>
-                    </label>
-                    <input
-                        type="file"
-                        id="file-upload"
-                        className="hidden"
-                        // onChange={(e) => console.log(e.target.files[0]?.name)} // 선택한 파일 이름 출력 (예시)
-                    />
+                <div className="p-4 border-b border-r border-gray-300 space-y-3">
+                    
+                <div className="mt-4">
+                    {clientFiles.length > 0 ? (
+                        <ul className="space-y-3">
+                        {clientFiles.map((file, index) => (
+                            
+                            <li
+                            key={index}
+                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg shadow-sm hover:shadow transition"
+                            >
+                            <div className="flex items-center space-x-3">
+                                <Download className="w-5 h-5 text-blue-600" />
+                                <span className="text-gray-800 truncate max-w-xs">{file.orignlFileNm}</span>
+                            </div>
+                            <button
+                                onClick={() => handleDownload(file.atchFileId, file.fileSn)}
+                                className="px-3 py-1 text-sm font-medium text-white bg-blue-500 rounded hover:bg-blue-600"
+                                
+                            >
+                                다운로드
+                            </button>
+                            </li>
+                        ))}
+                        </ul>
+                    ) : (
+                        <p className="text-gray-500">등록된 파일이 없습니다.</p>
+                    )}
+                    </div>
+
+
                 </div>
+
+                
 
                 {/* 신용도 평가 */}
                 <div className="flex items-center justify-start bg-gray-50 px-4 border-b border-r border-gray-300">
@@ -481,7 +539,7 @@ const ClientView = () => {
                                 <td className="border px-2 py-2 text-center">{manager.position}</td>
                                 <td className="border px-2 py-2 text-center">{manager.extnNmbr}</td>
                                 <td className="border px-2 py-2 text-center">{manager.mblPhone}</td>
-                                <td className="border px-2 py-2 text-center">{manager.creator}</td>
+                                <td className="border px-2 py-2 text-center">{manager.regNm}</td>
                                 <td className="border px-2 py-2 text-center">
                                 {manager.seq !== undefined && (
                                     <button onClick={() => deleteRow(index, String(manager.seq))} className="bg-red-500 text-white px-2 py-1 rounded-medium">
@@ -511,7 +569,7 @@ const ClientView = () => {
                         <span>담당자 추가</span>
                     </div>
 
-                    <Link to={`/clientModify/${clientSeq}`} className='flex justify-center items-center space-x-2 px-3 py-2 bg-orange-500 text-white border border-gray-300 hover:bg-blue-600 transition rounded'>
+                    <Link to={`/client/modify/${clientSeq}`} className='flex justify-center items-center space-x-2 px-3 py-2 bg-orange-500 text-white border border-gray-300 hover:bg-blue-600 transition rounded'>
                         <SquarePen className='w-5 h-5'/>
                         <span>수정</span>
                     </Link>

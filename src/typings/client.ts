@@ -23,6 +23,6 @@ export type tManager = {
     position: string;
     extnNmbr: string;
     mblPhone: string;
-    creator: string;
+    regNm: string;
     seq?: string;
 };

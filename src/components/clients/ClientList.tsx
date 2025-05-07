@@ -3,28 +3,29 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import ClientSearch from './ClientSearch';
 import Swal from 'sweetalert2';
+import { tClient, tManager } from '../../typings/client';
 
 
-type Client = {
-    atchFileId: string | null;
-    bizRegNo: string;
-    bizTy: string;
-    clientAddr: string;
-    clientCategory: string;
-    clientCd: string;
-    clientNm: string;
-    clientSeq: number;
-    creditRating: string | null;
-    etcInfo: string | null;
-    indClass: string;
-    modDt: string;
-    modId: string | null;
-    regDt: string;
-    regId: string | null;
-  };
+// type Client = {
+//     atchFileId: string | null;
+//     bizRegNo: string;
+//     bizTy: string;
+//     clientAddr: string;
+//     clientCategory: string;
+//     clientCd: string;
+//     clientNm: string;
+//     clientSeq: number;
+//     creditRating: string | null;
+//     etcInfo: string | null;
+//     indClass: string;
+//     modDt: string;
+//     modId: string | null;
+//     regDt: string;
+//     regId: string | null;
+//   };
 
 type FetchClientsResponse = {
-    content: Client[];
+    content: tClient[];
     empty: boolean;
     first: boolean;
     last: boolean;
@@ -45,6 +46,12 @@ type FetchClientsResponse = {
     };
 };
 
+/**
+ * 페이지네이션 계산
+ * @param currentPage 
+ * @param totalPages 
+ * @returns 
+ */
 const getPageRange = (currentPage: number, totalPages: number) => {
     const pageCount = 10;
     const startPage = Math.floor(currentPage / pageCount) * pageCount;
@@ -53,12 +60,19 @@ const getPageRange = (currentPage: number, totalPages: number) => {
     return Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i + 1);
   };
 
+/**
+ * 고객사 리스트를 가져오는 Fetch
+ * @param page 
+ * @param sKeyword 
+ * @param sCondition 상태코드 "ALL" 일 경우 "clientNm,clientCategory,bizRegNo" 나열해서 보내야 함
+ * @returns 
+ */
 const fetchClients = async (page: number, sKeyword: string, sCondition: string): Promise<FetchClientsResponse> => {
     const params = new URLSearchParams({
         reqPage: page.toString(),
-      });
+        });
 
-      // 키워드와 검색 조건 파라미터 추가
+        // 키워드와 검색 조건 파라미터 추가
     params.append('sKeyword', sKeyword);
     if (sCondition === 'ALL') {
         params.append('criteria', 'true');
@@ -66,39 +80,45 @@ const fetchClients = async (page: number, sKeyword: string, sCondition: string):
     } else {
         params.append('sCondition', sCondition);
     }
-    
-  
+
+
     const response = await fetch(`/crm/client/list?${params.toString()}`);
 
     if (!response.ok) {
-      throw new Error('Failed to fetch clients');
+        throw new Error('Failed to fetch clients');
     }
 
     const data: FetchClientsResponse = await response.json();
 
     return data;
-  };
+};
 
-// export type ClientViewType = 'list' | 'edit' | 'view';
-
-// interface ClientListProps {
-//     setActiveView: Dispatch<SetStateAction<ClientViewType>>;
-// }
+const fetchClientContactList = async (clientSeq: string) => {
+    const res = await fetch(`/crm/client/contact/list-by-client/${clientSeq}`);
+    if (!res.ok) {
+        throw new Error('데이터 로드 오류');
+    }
+    return res.json();
+}
 
 const ClientList = () => {
     const queryClient = useQueryClient();
 
     const [clientList, setClientList] = useState<FetchClientsResponse>();
 
+    // 검색 키워드 및 페이지네이션
     const [currentPage, setCurrentPage] = useState(0);
     const [searchKeyword, setSearchKeyword] = useState("");
-    const [searchCondition, setSearchCondition] = useState("ALL")
+    const [searchCondition, setSearchCondition] = useState("ALL");
+
+    const [managerList, setManagerList] = useState([]);
+    const [showManagerListModal, setShowManagerListModal] = useState(false);
 
     const { data: clientListData, isLoading: clientListIsLoading, isError: clientListIsError } = useQuery<FetchClientsResponse, Error>({
         queryKey: ['clients', currentPage, searchKeyword, searchCondition],
         queryFn: () => fetchClients(currentPage, searchKeyword, searchCondition),
-        staleTime: 5000,
-        placeholderData: (previousData) => previousData,
+        staleTime: 1000,
+        placeholderData: (previousData) => previousData
     });
 
     useEffect(() => {
@@ -166,9 +186,38 @@ const ClientList = () => {
         }
     };
 
-    const handleManagerListModalOpen = (clientSeq:number): void => {
-        console.log(`담당자 모달 열기: ${clientSeq}`);
-    }
+    const handleManagerListModalOpen = (clientSeq: number) => {
+        setShowManagerListModal(true); // 모달 열기
+        fetchClientContactList(clientSeq); // 담당자 목록 데이터 로드
+    };
+
+    const fetchClientContactList = async (clientSeq: number) => {
+
+        try {
+            const res = await fetch(`/crm/client/contact/list-by-client/${clientSeq}`);
+
+            if (!res.ok) {
+                throw new Error('데이터 로드 오류');
+            }
+            const data = await res.json();
+            console.log(data)
+            setManagerList(data); // 데이터를 상태에 저장
+
+        } catch (error) {
+            console.log(error); // 오류 발생 시 상태 업데이트
+        } 
+    };
+
+    const handleCloseModal = () => {
+        setShowManagerListModal(false);
+        setManagerList([]); // 데이터도 초기화
+    };
+
+    // const handleManagerListModalOpen = (clientSeq:string): void => {
+    //     setShowManagerListModal(true); // 모달 열기
+    //     fetchClientContactList(clientSeq);
+    // }
+
 
     if (clientListIsLoading) {
         return (
@@ -177,11 +226,6 @@ const ClientList = () => {
             </div>
         );
     }
-
-    if (clientListIsError) {
-        return <div>Error loading clients</div>;
-    }    
-
     
     const totalPages = clientList?.totalPages || 0;
 
@@ -190,6 +234,56 @@ const ClientList = () => {
     return (
 
         <>
+            {showManagerListModal && (
+                <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
+                    <div className="bg-white rounded-lg shadow-lg p-6 w-[1000px]">
+                        <h2 className="text-lg font-semibold mb-4">고객사 담당자 목록</h2>
+
+                        <div className="space-y-3">
+                            {(
+                                <table className="min-w-full table-auto text-sm whitespace-nowrap"> 
+                                    <thead>
+                                        <tr className="bg-gray-200">
+                                            <th className="px-6 py-3 text-left">성명</th> 
+                                            <th className="px-6 py-3 text-left">직급</th>
+                                            <th className="px-6 py-3 text-left">내선번호</th>
+                                            <th className="px-6 py-3 text-left">휴대전화번호</th>
+                                            <th className="px-6 py-3 text-left">등록자명</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {managerList.length > 0 ? (
+                                            managerList.map((manager: tManager) => (
+                                                <tr key={manager.seq} className="border-b">
+                                                    <td className="px-6 py-3">{manager.name}</td>
+                                                    <td className="px-6 py-3">{manager.position}</td>
+                                                    <td className="px-6 py-3">{manager.extnNmbr}</td>
+                                                    <td className="px-6 py-3">{manager.mblPhone}</td>
+                                                    <td className="px-6 py-3">{manager.regNm}</td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={5} className="px-6 py-3 text-center">담당자가 없습니다.</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+
+                        <div className="mt-6 flex justify-end gap-2">
+                            <button
+                                onClick={handleCloseModal}
+                                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                                닫기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <ClientSearch 
                 searchCondition={searchCondition} 
                 setSearchCondition={setSearchCondition}
@@ -212,6 +306,7 @@ const ClientList = () => {
                     </tr>
                 </thead>
                 <tbody>
+                    {clientListIsError && <tr><td colSpan={7} className="text-center py-4 text-red-500">검색 결과가 없습니다.</td></tr>}
                     {clientListData?.content.map((client) => {
                         return (
                             <tr key={client.clientSeq} className="border-t border-gray-200">

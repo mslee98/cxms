@@ -1,3 +1,8 @@
+
+
+/**
+ * PMS comCode용 (Biz, IndClass, ClientCategory)
+ */
 export interface comCodeType {
     code: string;
     codeNm: string;

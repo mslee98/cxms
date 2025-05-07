@@ -8,6 +8,14 @@ import Swal from 'sweetalert2';
 import { fetchBizCode, fetchClientCategoryList, fetchIndClass } from '../../utils/comApiUtils';
 import { tClient, tManager } from '../../typings/client';
 
+const fetchClientFileInfo = async (atchFileId: string) => {
+    const res = await fetch(`/pms/api/common/clientFiles/${atchFileId}.do`);
+    if (!res.ok) {
+        throw new Error('데이터 로드 오류');
+    }
+    return res.json();
+}
+
 const fetchClientInfo = async (clientSeq: string) => {
     const res = await fetch(`/crm/client/info/${clientSeq}`);
     if (!res.ok) {
@@ -41,6 +49,7 @@ const ClientModify = () => {
         creditRating: "",
         etcInfo: "",
         clientCd: "",
+        atchFileId: "",
     });
     const managerRef = useRef(null);
     const [ daumModalYn, setDaumModalYn ] = useState(false)
@@ -49,10 +58,14 @@ const ClientModify = () => {
         position: '',
         extnNmbr: '',
         mblPhone: '',
-        creator: '',
+        regNm: '',
     });
     const [managers, setManagers] = useState<tManager[]>([])
     const [ showManagerModal, setShowManagerModal] = useState(false);
+
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+    const [deletedFileSns, setDeletedFileSns] = useState<number[]>([]);
+    const [deleteFileArr, setDeleteFileArr] = useState<string>('');
 
     const { data: clientInfo, error: clientInfoError, isLoading: clientInfoLoading } = useQuery<tClient>({
         queryKey: ['clientInfo', clientSeq],
@@ -66,9 +79,7 @@ const ClientModify = () => {
     });
 
     useEffect(() => {
-
         if (clientInfo) {
-            console.log(clientInfo)
             setFormData({
                 clientNm: clientInfo.clientNm || "",
                 clientAddrMain: clientInfo.clientAddrMain || "",
@@ -80,7 +91,8 @@ const ClientModify = () => {
                 bizRegNo: clientInfo.bizRegNo || "",
                 creditRating: clientInfo.creditRating || "",
                 etcInfo: clientInfo.etcInfo || "",
-                clientCd: clientInfo.clientCd
+                clientCd: clientInfo.clientCd,
+                atchFileId: clientInfo.atchFileId || "",
             });
         }
     }, [clientInfo]);
@@ -99,6 +111,20 @@ const ClientModify = () => {
     useEffect(() => {
         setManagers(clientContactList)
     }, [clientContactList])
+
+    const [clientFiles, setClientFiles] = useState<any[]>([]);
+    
+        useEffect(() => {
+            if (clientInfo && clientInfo.atchFileId) {
+                fetchClientFileInfo(clientInfo.atchFileId)
+                    .then((files) => {
+                        setClientFiles(files); // 조회된 파일 목록 상태에 저장
+                    })
+                    .catch((error) => {
+                        console.error("파일 조회 오류:", error);
+                    });
+            }
+        }, [clientInfo]); 
 
     const { data: bizType } = useQuery<comCodeType[]>({
         queryKey: ['bizType'],
@@ -124,34 +150,53 @@ const ClientModify = () => {
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
-        
-
         try {
 
-            // const fileForm = new FormData();
-            // fileForm.append('file', file)
-
-            // const atchFileId = await fetch('/pms/api/common/clientFileInfo.do', {
-            //     method: 'POST',
-            //     body: 
-            // })
+        
+            const fileForm = new FormData();
+        
+            selectedFiles.forEach(file => {
+                fileForm.append('file', file);
+            });
+        
+            if (deletedFileSns.length > 0) {
+                // atchFileId와 fileSn을 결합하여 `${atchFileId};${fileSn}` 형식으로 전송
+                const deleteFileArr = deletedFileSns.map(fileSn => `${clientInfo?.atchFileId};${fileSn}`).join(',');
+                fileForm.append('deleteFileArr', deleteFileArr);
+            }
+        
+            console.log("요청 atchFileId:", clientInfo?.atchFileId);
+        
+            const fnRes = await fetch(`/pms/api/common/clientFileInfo/${clientInfo?.atchFileId}.do`, {
+                method: 'POST',
+                body: fileForm,
+            });
+        
+            if (!fnRes.ok) {
+                const errorText = await fnRes.text();
+                console.error("❌ 요청 실패:", fnRes.status, fnRes.statusText);
+                console.error("❌ 응답 내용:", errorText);
+                alert(`업로드 실패: ${fnRes.status}`);
+                return;
+            }
+        
+            const result = await fnRes.text();
+            
 
             const dataToSend = {
                 ...formData,
                 clientAddr: formData.clientAddrMain + formData.clientAddrDetail
             };
 
-            const response = await fetch('/crm/client/info', {
-                method: 'POST',
+            const response = await fetch(`/crm/client/info/${clientSeq}`, {
+                method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(dataToSend), // formData를 JSON으로 전송
             });
 
-            const clientSeq = (await response.text()).split("_")[0];
-
-            if(clientSeq && managers.length > 0) {
+            if(clientSeq && managers) {
 
                 const contactData = managers.map(manager => ({
                     ...manager,
@@ -170,8 +215,8 @@ const ClientModify = () => {
 
             Swal.fire({
                 icon: 'success',
-                title: '등록 완료',
-                text: '고객 정보가 성공적으로 등록되었습니다.',
+                title: '수정 완료',
+                text: '고객 정보가 성공적으로 수정되었습니다.',
               }).then(() => {
                 navigate(`/client/detail/${clientSeq}`);
               });
@@ -200,28 +245,33 @@ const ClientModify = () => {
     const handleComplete = (data: any) => {
         setFormData({
             ...formData,
+            clientAddr: data.address,
             clientAddrMain: data.address, // 주소 필드에 선택된 주소를 설정
         });
         setDaumModalYn(false); // 주소 검색 모달 닫기
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-          console.log(file.name);
-        }
-      };
+            const files = e.target.files;
+            if (files) {
+                const fileArray = Array.from(files);
+                setSelectedFiles((prev) => [...prev, ...fileArray]);
+            }
+        };
 
     const addRow = () => {
         const newRow = newManager;
 
-        setManagers((prevManager) => [...prevManager, newRow])
+        setManagers((prevManager) => {
+            const updatedManagers = Array.isArray(prevManager) ? prevManager : [];
+            return [...updatedManagers, newRow];
+        });
         setNewManager({
             name: '',
             position: '',
             extnNmbr: '',
             mblPhone: '',
-            creator: ''
+            regNm: ''
         });
         setShowManagerModal(false);
     }
@@ -229,6 +279,17 @@ const ClientModify = () => {
     const deleteRow = (index: number) => {
         setManagers((prevManagers) => prevManagers.filter((_, i) => i !== index));
     }
+
+    const handleDeleteExisting = (fileSn: number) => {
+        // 삭제 배열 추가
+        const newEntry = `${clientInfo?.atchFileId};${fileSn}`;
+        setDeleteFileArr(prev =>
+          prev ? `${prev},${newEntry}` : newEntry
+        );
+    
+        // UI에서도 제거
+        setDeletedFileSns(prev => [...prev, fileSn]);
+      };
 
     return (
         <>
@@ -315,7 +376,7 @@ const ClientModify = () => {
                         name='clientNm'
                         className="w-full h-10 p-2 outline-none border border-gray-300 rounded"
                         placeholder="고객사명을 입력하세요"
-                        value={clientInfo?.clientNm}
+                        value={formData.clientNm}
                         onChange={handleChange}
                     />
                 </div>
@@ -328,7 +389,7 @@ const ClientModify = () => {
                         name='clientCd'
                         className="w-full h-10 p-2 outline-none border border-gray-300 bg-gray-300 rounded"
                         placeholder="고객사명을 입력하세요"
-                        value={clientInfo?.clientCd}
+                        value={formData.clientCd}
                         onChange={handleChange}
                         readOnly
                     />
@@ -345,9 +406,8 @@ const ClientModify = () => {
                         <input
                             className="w-full h-10 p-2 outline-none border border-gray-300 rounded"
                             name="clientAddr"
-                            value={clientInfo?.clientAddr}
+                            value={formData.clientAddr}
                             onClick={() => setDaumModalYn(true)}
-                            readOnly
                         />
                         <button
                             type="button"
@@ -375,7 +435,7 @@ const ClientModify = () => {
                     <select
                         name="bizTy"
                         className="w-full h-10 p-2 outline-none border border-gray-300 rounded"
-                        value={clientInfo?.bizTy}
+                        value={formData.bizTy}
                         onChange={handleChange}
                     >
                         <option>기업형태 선택</option>
@@ -392,7 +452,7 @@ const ClientModify = () => {
                     <select
                         name="indClass"
                         className="w-full h-10 p-2 outline-none border border-gray-300 rounded"
-                        value={clientInfo?.indClass}
+                        value={formData.indClass}
                         onChange={handleChange}
                     >
                         <option>산업분류 선택</option>
@@ -412,7 +472,7 @@ const ClientModify = () => {
                     <select
                         name="clientCategory"
                         className="w-full h-10 p-2 outline-none border border-gray-300 rounded"
-                        value={clientInfo?.clientCategory}
+                        value={formData.clientCategory}
                         onChange={handleChange}
                     >
                         <option>고객분류 선택</option>
@@ -431,7 +491,7 @@ const ClientModify = () => {
                         name="bizRegNo"
                         className="w-full h-10 p-2 outline-none border border-gray-300 rounded"
                         placeholder=""
-                        value={clientInfo?.bizRegNo}
+                        value={formData.bizRegNo}
                         onChange={handleChange}
                     />
                 </div>
@@ -441,29 +501,98 @@ const ClientModify = () => {
                 <div className="flex items-center justify-start bg-gray-50 px-4 border-b border-r border-gray-300">
                     <label className="font-medium text-lg">첨부파일</label>
                 </div>
-                <div className="p-2 border-b border-r border-gray-300">
-                    <label htmlFor="file-upload" className="w-full h-10 p-2 outline-none border border-gray-300 rounded cursor-pointer flex items-center justify-center bg-blue-500 text-white hover:bg-blue-600 transition">
-                        <span>파일 선택</span>
-                    </label>
-                    <input
-                        type="file"
+
+                <div className="p-4 border-b border-r border-gray-300 space-y-3">
+                    {/* 파일 업로드 버튼 */}
+                    <div className="flex items-center space-x-3">
+                        <label
+                        htmlFor="file-upload"
+                        className="inline-block cursor-pointer bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold py-2 px-4 rounded"
+                        >
+                        파일 선택
+                        </label>
+
+                        <div className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm text-gray-500 bg-white">
+                        {selectedFiles.length > 0
+                            ? `${selectedFiles.length}개의 파일 선택됨`
+                            : '파일을 선택하세요'}
+                        </div>
+
+                        <input
                         id="file-upload"
-                        className="hidden"
+                        type="file"
+                        multiple
                         onChange={handleFileChange}
-                    />
-                </div>
+                        className="hidden"
+                        />
+                    </div>
+
+                    {/* 새로 선택된 파일 목록 */}
+                    {selectedFiles.length > 0 && (
+                        <div className="space-y-2">
+                        {selectedFiles.map((file, index) => (
+                            <div
+                            key={index}
+                            className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded"
+                            >
+                            <span className="truncate text-sm text-gray-800 max-w-[80%]">
+                                {file.name}
+                            </span>
+                            <button
+                                onClick={() =>
+                                setSelectedFiles(prev => prev.filter((_, i) => i !== index))
+                                }
+                                className="text-sm text-red-600 hover:text-red-800"
+                            >
+                                삭제
+                            </button>
+                            </div>
+                        ))}
+                        </div>
+                    )}
+
+                    {/* 기존 파일 목록 */}
+                    {clientFiles
+                        .filter(file => !deletedFileSns.includes(file.fileSn))
+                        .map(file => (
+                        <div
+                            key={file.fileSn}
+                            className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded"
+                        >
+                            <span className="truncate text-sm text-gray-800 max-w-[80%]">
+                            {file.orignlFileNm}
+                            </span>
+                            <button
+                                onClick={() => handleDeleteExisting(file.fileSn)}
+                                className="text-sm text-red-600 hover:text-red-800"
+                            >
+                            삭제
+                            </button>
+                        </div>
+                        ))}
+
+                        {/* 서버로 전달할 삭제파일 목록 hidden input */}
+                        <input
+                            type="hidden"
+                            id="deleteFileArr"
+                            name="deleteFileArr"
+                            value={deleteFileArr}
+                        />
+                    </div>
 
                 <div className="flex items-center justify-start bg-gray-50 px-4 border-b border-r border-gray-300">
                     <label className="font-medium text-lg">신용도 평가</label>
                 </div>
+
                 <div className="p-2 border-b border-r border-gray-300">
                     <input
                         name="creditRating"
                         className="w-full h-10 p-2 outline-none border border-gray-300 rounded"
-                        value={clientInfo?.creditRating ?? ""}
+                        value={formData.creditRating ?? ""}
                         onChange={handleChange}
                     />
                 </div>
+
             </div>
 
             <div className="grid grid-cols-[20rem_1fr]">
@@ -476,7 +605,7 @@ const ClientModify = () => {
                         rows={4}
                         cols={4}
                         className="w-full p-2 outline-none border border-gray-300 rounded"
-                        value={clientInfo?.etcInfo ?? ""}
+                        value={formData.etcInfo ?? ""}
                         onChange={handleChange}
                     />
                 </div>
@@ -519,7 +648,7 @@ const ClientModify = () => {
                                 <td className="border px-2 py-2 text-center">{manager.position}</td>
                                 <td className="border px-2 py-2 text-center">{manager.extnNmbr}</td>
                                 <td className="border px-2 py-2 text-center">{manager.mblPhone}</td>
-                                <td className="border px-2 py-2 text-center">{manager.creator}</td>
+                                <td className="border px-2 py-2 text-center">{manager.regNm}</td>
                                 <td className="border px-2 py-2 text-center">
                                     <button onClick={() => deleteRow(index)} className="bg-red-500 text-white px-2 py-1 rounded-medium">삭제</button>
                                 </td>
@@ -533,13 +662,13 @@ const ClientModify = () => {
             </div>
 
             <div className='mt-6 flex justify-between items-center'>
-                <Link to="/clientMng" className='flex justify-center items-center space-x-2 px-3 py-2 border border-gray-300 hover:bg-gray-600 hover:text-white transition rounded'>
+                <Link to="/client/list" className='flex justify-center items-center space-x-2 px-3 py-2 border border-gray-300 hover:bg-gray-600 hover:text-white transition rounded'>
                     <ListEnd className='w-5 h-5'/>
                     <span>목록</span>
                 </Link>
                 <button type="submit" className='flex justify-center items-center space-x-2 px-3 py-2 bg-blue-500 text-white border border-gray-300 hover:bg-blue-600 transition rounded'>
                     <Save className='w-5 h-5'/>
-                    <span>등록</span>
+                    <span>수정</span>
                 </button>
             </div>
         </form>
