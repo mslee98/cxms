@@ -200,7 +200,6 @@ const ClientList = () => {
                 throw new Error('데이터 로드 오류');
             }
             const data = await res.json();
-            console.log(data)
             setManagerList(data); // 데이터를 상태에 저장
 
         } catch (error) {
@@ -212,11 +211,6 @@ const ClientList = () => {
         setShowManagerListModal(false);
         setManagerList([]); // 데이터도 초기화
     };
-
-    // const handleManagerListModalOpen = (clientSeq:string): void => {
-    //     setShowManagerListModal(true); // 모달 열기
-    //     fetchClientContactList(clientSeq);
-    // }
 
 
     if (clientListIsLoading) {

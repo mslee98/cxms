@@ -63,35 +63,32 @@ const ClientRegist = () => {
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
             
-            if(selectedFiles.length > 0) {
-                const fileForm = new FormData();
-                selectedFiles.forEach(file => {
-                    fileForm.append('file', file); // 서버에서 files[] 형태로 받을 수 있도록
-                });
+        if(selectedFiles.length > 0) {
+            const fileForm = new FormData();
+            selectedFiles.forEach(file => {
+                fileForm.append('file', file); // 서버에서 files[] 형태로 받을 수 있도록
+            });
 
-                const fileUploadRes = await fetch('/pms/api/common/clientFileInfo.do', {
-                    method: 'POST',
-                    body: fileForm,
-                });
+            const fileUploadRes = await fetch('/pms/api/common/clientFileInfo.do', {
+                method: 'POST',
+                body: fileForm,
+            });
 
-                const fileUploadResult = await fileUploadRes.text();
+            const fileUploadResult = await fileUploadRes.text();
 
-                // 불필요한 따옴표 제거
-                const cleanedFileUploadResult = fileUploadResult.replace(/^"|"$/g, '');
+            // 불필요한 따옴표 제거
+            const cleanedFileUploadResult = fileUploadResult.replace(/^"|"$/g, '');
 
+            setFormData(prevState => ({
+                ...prevState,  // 이전 상태 유지
+                atchFileId: cleanedFileUploadResult,
+            }));
 
-                console.log(cleanedFileUploadResult)
+            // atchFileId = fileUploadResult.atchFileId;
 
-                setFormData(prevState => ({
-                    ...prevState,  // 이전 상태 유지
-                    atchFileId: cleanedFileUploadResult,
-                }));
-
-                // atchFileId = fileUploadResult.atchFileId;
-
-                if (!fileUploadResult) {
-                    throw new Error('파일 업로드 실패: atchFileId 없음');
-                }
+            if (!fileUploadResult) {
+                throw new Error('파일 업로드 실패: atchFileId 없음');
+            }
 
             }
 

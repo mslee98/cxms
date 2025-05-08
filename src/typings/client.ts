@@ -25,4 +25,6 @@ export type tManager = {
     mblPhone: string;
     regNm: string;
     seq?: string;
+    isNewYn?: boolean; // 수정 페이지에서 새로 추가된 행인지 구별용
+    isDelYn?: boolean;
 };

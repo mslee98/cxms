@@ -114,17 +114,17 @@ const ClientModify = () => {
 
     const [clientFiles, setClientFiles] = useState<any[]>([]);
     
-        useEffect(() => {
-            if (clientInfo && clientInfo.atchFileId) {
-                fetchClientFileInfo(clientInfo.atchFileId)
-                    .then((files) => {
-                        setClientFiles(files); // 조회된 파일 목록 상태에 저장
-                    })
-                    .catch((error) => {
-                        console.error("파일 조회 오류:", error);
-                    });
-            }
-        }, [clientInfo]); 
+    useEffect(() => {
+        if (clientInfo && clientInfo.atchFileId) {
+            fetchClientFileInfo(clientInfo.atchFileId)
+                .then((files) => {
+                    setClientFiles(files); // 조회된 파일 목록 상태에 저장
+                })
+                .catch((error) => {
+                    console.error("파일 조회 오류:", error);
+                });
+        }
+    }, [clientInfo]); 
 
     const { data: bizType } = useQuery<comCodeType[]>({
         queryKey: ['bizType'],
@@ -151,8 +151,6 @@ const ClientModify = () => {
         e.preventDefault();
 
         try {
-
-        
             const fileForm = new FormData();
         
             selectedFiles.forEach(file => {
@@ -174,8 +172,8 @@ const ClientModify = () => {
         
             if (!fnRes.ok) {
                 const errorText = await fnRes.text();
-                console.error("❌ 요청 실패:", fnRes.status, fnRes.statusText);
-                console.error("❌ 응답 내용:", errorText);
+                console.error(" 요청 실패:", fnRes.status, fnRes.statusText);
+                console.error(" 응답 내용:", errorText);
                 alert(`업로드 실패: ${fnRes.status}`);
                 return;
             }
@@ -196,15 +194,20 @@ const ClientModify = () => {
                 body: JSON.stringify(dataToSend), // formData를 JSON으로 전송
             });
 
-            if(clientSeq && managers) {
-
-                const contactData = managers.map(manager => ({
-                    ...manager,
-                    clientSeq: clientSeq, // 담당자 등록할 때 clientSeq 추가
-                }));
-
-
-                const contactResponse = await fetch('/crm/client/contact/info-by-list', {
+            if (clientSeq && managers) {
+                const newManagers = managers.filter(manager => manager.isNewYn); // isNewYn이 true인 데이터만 필터링
+            
+                const contactData = newManagers.map(manager => {
+                    const { isNewYn, ...managerData } = manager; 
+                    return {
+                        ...managerData,
+                        clientSeq: clientSeq,
+                    };
+                });
+            
+            
+                // 서버로 데이터 전송
+                const contactResponse = fetch('/crm/client/contact/info-by-list', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -260,24 +263,84 @@ const ClientModify = () => {
         };
 
     const addRow = () => {
-        const newRow = newManager;
+        const newRow = {
+            ...newManager,
+            isNewYn: true, // 새로 추가된 행임을 표시
+        };
 
         setManagers((prevManager) => {
             const updatedManagers = Array.isArray(prevManager) ? prevManager : [];
             return [...updatedManagers, newRow];
         });
+
         setNewManager({
             name: '',
             position: '',
             extnNmbr: '',
             mblPhone: '',
-            regNm: ''
+            regNm: '',
+            isNewYn: false,
         });
         setShowManagerModal(false);
     }
 
-    const deleteRow = (index: number) => {
-        setManagers((prevManagers) => prevManagers.filter((_, i) => i !== index));
+    const deleteRow = async (index: number, seq: string, isNewYn: boolean) => {
+        const { isConfirmed } = await Swal.fire({
+            title: '정말 삭제하시겠습니까?',
+            text: '한 번 삭제하면 복구할 수 없습니다.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '네, 삭제합니다',
+            cancelButtonText: '아니요',
+            buttonsStyling: false,  // <-- SweetAlert 기본 버튼 스타일링 해제
+            customClass: {
+                popup: 'bg-white p-6 rounded-lg shadow-lg',
+                title: 'text-gray-900 text-xl font-semibold',
+                htmlContainer: 'text-gray-700',
+                confirmButton: 'px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white',
+                cancelButton: 'px-4 py-2 ml-2 rounded-lg bg-gray-400 hover:bg-gray-500 text-white',
+            }
+        });
+
+        if (!isConfirmed) return;
+
+        try {
+
+            if(isNewYn) {
+                setManagers((prev) => prev.filter((_, i) => i !== index));
+            } else {
+                const response = await fetch(`/crm/client/contact/info/${seq}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+        
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(`서버 에러: ${text}`);
+                }
+        
+                setManagers((prev) => prev.filter((_, i) => i !== index));
+                
+                await Swal.fire({
+                    title: '삭제되었습니다',
+                    icon: 'success',
+                    timer: 1500,
+                    showConfirmButton: false,
+                });
+            }
+
+            
+        } catch (error: unknown) {
+            console.error('deleteRow 오류:', error);
+            const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+            Swal.fire({
+                title: '삭제 중 오류',
+                text: errorMessage,
+                icon: 'error',
+            });
+        }
     }
 
     const handleDeleteExisting = (fileSn: number) => {
@@ -650,7 +713,9 @@ const ClientModify = () => {
                                 <td className="border px-2 py-2 text-center">{manager.mblPhone}</td>
                                 <td className="border px-2 py-2 text-center">{manager.regNm}</td>
                                 <td className="border px-2 py-2 text-center">
-                                    <button onClick={() => deleteRow(index)} className="bg-red-500 text-white px-2 py-1 rounded-medium">삭제</button>
+                                    <button type="button" onClick={() => deleteRow(index, String(manager.seq), manager?.isNewYn !== undefined ? manager.isNewYn : false)} className="bg-red-500 text-white px-2 py-1 rounded-medium">
+                                        삭제
+                                    </button>
                                 </td>
                             </tr>
                         ))}

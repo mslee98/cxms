@@ -1,5 +1,7 @@
 
 
+// 고객사 삭제하면 comtnfile / comtnfilrDetail도 삭제 필요
+
 파일 저장은 PMS쪽에서 저장을 하고 COMTNFILE.ATCH_FILE_ID를 반환받아 CRM CLIENT에 저장하는 방식임
 경로는 어쩔 수 없이 내 로컬 환경 경로로했음
 
