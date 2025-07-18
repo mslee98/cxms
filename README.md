@@ -1,4 +1,5 @@
-# Getting Started with Create React App
+# CXMS
+- 뷰 모둘페더레이션 React Package호환 테스트용 프로젝트
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
